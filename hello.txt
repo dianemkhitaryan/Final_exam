@@ -1,0 +1,428 @@
+-- 1) Get number of students
+select count(1) from students s
+
+-----------------------------------------------------
+
+-- 2) Get students population in each year
+select student_population_year_ref, count(1) from students s group by student_population_year_ref
+
+-----------------------------------------------------
+
+-- 3) get students population in each program
+select student_population_code_ref, count(1) from students s group by student_population_code_ref 
+
+-----------------------------------------------------
+
+-- 4) calculate age from dob 
+select contact_first_name, contact_last_name, date_part('year', age(contact_birthdate)) as contact_age from contacts c 
+
+-----------------------------------------------------
+
+-- 5) add age column to contacts
+alter table contacts add column contact_age integer null;
+
+-----------------------------------------------------
+
+-- 6) calculate age from dob and insert in col contact_age
+update contacts as c set contact_age = 
+(select date_part('year', age(contact_birthdate)) as c_age from contacts c2 
+where c.contact_email = c2.contact_email);
+
+select contact_address, contact_age from contacts c order by contact_age 
+
+-----------------------------------------------------
+
+-- 7) avg student age
+select avg(contact_age) as student_avg_age from students s
+left join contacts c on s.student_contact_ref = c.contact_email 
+
+-----------------------------------------------------
+
+-- 8) avg session duration for a course
+select c.course_name, ABS(avg(extract(epoch from 
+	TO_TIMESTAMP(s.session_end_time , 'HH24:MI:SS') - TO_TIMESTAMP(s.session_start_time , 'HH24:MI:SS'))/3600)) as s_avg 
+	from sessions s
+left join courses c 
+	on s.session_course_ref = c.course_code 
+	and s.session_course_rev_ref = c.course_rev 
+where c.course_code = 'SE_ADV_DB'
+group by c.course_name
+
+-----------------------------------------------------
+
+-- 9) Find the student with most absents
+select c.contact_first_name, c.contact_last_name, count(a.attendance_student_ref) as absents from contacts c
+left join students s on c.contact_email = s.student_contact_ref 
+left join attendance a on s.student_epita_email = a.attendance_student_ref
+where a.attendance_presence = 0
+group by c.contact_first_name, c.contact_last_name
+order by absents desc
+limit 1
+
+-----------------------------------------------------
+
+-- 10) Find the course with most absents
+select c.course_name, count(a.attendance_student_ref) as absents from attendance a 
+left join courses c 
+	on c.course_code = a.attendance_course_ref 
+	and c.course_rev = a.attendance_course_rev 
+where a.attendance_presence = 0
+group by c.course_name
+order by absents desc
+limit 1
+
+-----------------------------------------------------
+
+-- 11) Find students who are not graded
+select c.contact_first_name, c.contact_last_name, g.grade_score from students s 
+left join contacts c on s.student_contact_ref = c.contact_email 
+left join grades g on g.grade_student_epita_email_ref = s.student_epita_email 
+where g.grade_score is null
+
+-----------------------------------------------------
+
+-- 12) Number of sessions for each course
+select c.course_name, count(1) as total from sessions s
+left join courses c 
+	on s.session_course_ref = c.course_code 
+	and s.session_course_rev_ref = c.course_rev
+group by c.course_name
+
+-----------------------------------------------------
+
+-- 13) Find the teachers who are not in any session
+select t.teacher_epita_email from teachers t
+left join sessions s on s.session_prof_ref = t.teacher_epita_email
+where s.session_prof_ref is null
+
+-----------------------------------------------------
+
+-- 14) list of teachers who attend the total session
+select c.contact_first_name, c.contact_last_name, t.teacher_epita_email, count(s.session_prof_ref) as total 
+from teachers t 
+inner join contacts c on c.contact_email = t.teacher_contact_ref 
+inner join sessions s on s.session_prof_ref = t.teacher_epita_email
+group by c.contact_first_name, c.contact_last_name, t.teacher_epita_email
+order by total desc
+
+-----------------------------------------------------
+
+-- 15) Find the DSA students details with grades
+select c.contact_first_name, c.contact_last_name, s.student_population_code_ref, 
+g.grade_course_code_ref, g.grade_score 
+from students s 
+left join contacts c on c.contact_email = s.student_contact_ref 
+left join grades g on g.grade_student_epita_email_ref = s.student_epita_email 
+where s.student_population_code_ref = 'DSA'
+order by g.grade_score desc
+
+-----------------------------------------------------
+
+-- 16) Attendance percentage for a student
+select a.attendance_student_ref, a.attendance_course_ref,
+(sum(a.attendance_presence)/count(1)::float)*100 AS percentage
+from attendance a
+where a.attendance_student_ref = 'tawna.buvens@epita.fr'
+group by  a.attendance_student_ref, a.attendance_course_ref
+
+
+-----------------------------------------------------
+
+-- 17) Avg grade for DSA students
+select s.student_population_code_ref, avg(g.grade_score) as avg_grade from grades g
+left join students s on g.grade_student_epita_email_ref = s.student_epita_email
+where s.student_population_code_ref = 'DSA'
+group by s.student_population_code_ref
+
+-----------------------------------------------------
+
+-- 18) All students average grade
+select c.contact_first_name, c.contact_last_name, avg(g.grade_score) average_grade from students s
+left join contacts c on c.contact_email = s.student_contact_ref 
+left join grades g on s.student_epita_email = g.grade_student_epita_email_ref
+group by c.contact_first_name, c.contact_last_name
+order by average_grade desc
+
+-----------------------------------------------------
+
+-- 19) List the courses tought by teacher
+select c2.contact_first_name, c2.contact_last_name, c.course_name from teachers t
+left join sessions s on s.session_prof_ref = t.teacher_epita_email
+left join courses c on s.session_course_ref = c.course_code and s.session_course_rev_ref = c.course_rev
+left join contacts c2 on t.teacher_contact_ref = c2.contact_email
+where c.course_name is not null
+group by c2.contact_first_name, c2.contact_last_name, c.course_name
+
+-----------------------------------------------------
+
+-- 20) Find the teachers who are not giving any courses
+select t.teacher_epita_email from teachers t 
+left join sessions s on s.session_prof_ref = t.teacher_epita_email 
+left join courses c on s.session_course_ref = c.course_code 
+where s.session_course_ref is null;
+
+
+
+select s.student_epita_email
+from students as s 
+where s.student_epita_email not in 
+(select g.grade_student_epita_email_ref from grades as g)
+
+-----------------------------------------------------
+
+-- Name of each student and their population code
+select c.contact_first_name, c.contact_last_name, s.student_population_code_ref from students s 
+left join contacts c on s.student_contact_ref = c.contact_email
+order by  s.student_population_code_ref
+
+-- Get each course exam type and details
+select c.course_name, c.course_code, e.exam_type, e.exam_weight from exams e 
+left join courses c on c.course_code = e.exam_course_code 
+
+-- Get highest score in each exam
+select g.grade_exam_type_ref, max(g.grade_score) highest_grade from grades g 
+left join exams e ON g.grade_exam_type_ref = e.exam_type group by g.grade_exam_type_ref
+
+-- Get highest exam score for each course
+select c.course_name, max(g.grade_score), g.grade_exam_type_ref exam_type from courses c 
+left join grades g on c.course_code = g.grade_course_code_ref 
+and c.course_rev = g.grade_course_rev_ref 
+group by c.course_name, exam_type 
+
+-- Name of the students with the highest score in each exam
+select c2.contact_first_name, H.cname, H.highest_score, H.exam_type 
+from (select c.course_name as cname, 
+	max(g.grade_score) as highest_score, 
+	g.grade_exam_type_ref as exam_type,
+	c.course_code, c.course_rev
+	from courses c 
+	
+	left join grades g 
+		on c.course_code = g.grade_course_code_ref 
+		and c.course_rev = g.grade_course_rev_ref 
+	group by cname, exam_type, c.course_code, c.course_rev) H
+inner join grades g2
+	on g2.grade_course_code_ref = H.course_code 
+		and g2.grade_course_rev_ref = H.course_rev 
+		and H.highest_score = g2.grade_score
+left join students s on g2.grade_student_epita_email_ref = s.student_epita_email 
+left join contacts c2 on s.student_contact_ref = c2.contact_email
+group by c2.contact_first_name, H.cname, H.exam_type,  H.highest_score
+
+-- Name of the student with the highest score in each exam
+select con.contact_first_name, con.contact_last_name , M.bestScore, M.cname, g2.grade_exam_type_ref 
+from
+	(select c.course_name cname, c.course_code,c.course_rev ,g.grade_exam_type_ref, max(g.grade_score) bestScore 
+	from courses c 
+	left join grades g 
+		on c.course_code = g.grade_course_code_ref 
+			 and c.course_rev = g.grade_course_rev_ref
+	group by c.course_name, g.grade_exam_type_ref ,c.course_code,c.course_rev) M
+inner join grades g2 
+	on M.course_code = g2.grade_course_code_ref 
+			 and M.course_rev = g2.grade_course_rev_ref
+			 and M.bestScore = g2.grade_score 
+			 and M.grade_exam_type_ref = g2.grade_exam_type_ref 
+left join students s 
+	on g2.grade_student_epita_email_ref = s.student_epita_email 
+left join contacts con 
+	on s.student_contact_ref = con.contact_email 
+order by M.cname, g2.grade_exam_type_ref ;
+
+
+select * from attendance a 
+select * from contacts c
+select * from courses c2
+select * from exams e 
+select * from populations p 
+select * from students s 
+select * from sessions s2 
+select * from programs p2 
+select * from teachers t 
+select * from grades g
+
+
+
+
+--1- Get all enrolled students for a specific period,program,year ?
+select s.student_epita_email from students s 
+where s.student_population_period_ref = 'SPRING' 
+and s.student_population_year_ref = '2021'
+and s.student_population_code_ref = 'SE'
+
+--2- Get number of enrolled students for a specific period,program,year
+select count(s.student_epita_email) from students s 
+where s.student_population_period_ref = 'SPRING' 
+and s.student_population_year_ref = '2021'
+and s.student_population_code_ref = 'SE'
+
+--3- Get All defined exams for a course from grades table
+select distinct g.grade_exam_type_ref from grades g 
+
+--4-Get all grades for a student
+select c.course_name, g.grade_exam_type_ref, g.grade_score from grades g
+inner join courses c on c.course_code = g.grade_course_code_ref 
+and c.course_rev = g.grade_course_rev_ref
+where g.grade_student_epita_email_ref = 'marjory.mastella@epita.fr'
+
+--5-Get all grades for a specific Exam
+select g.grade_course_code_ref, g.grade_score from grades g 
+where g.grade_exam_type_ref = 'Project' and g.grade_course_code_ref = 'SE_ADV_JS'
+
+--6-Get students Ranks in an Exam for a course
+select g.grade_student_epita_email_ref, 
+g.grade_course_code_ref, g.grade_score,
+DENSE_RANK() OVER ( 
+		ORDER BY g.grade_score desc
+	) student_rank
+from grades g 
+where g.grade_course_code_ref = 'SE_ADV_JS' and g.grade_exam_type_ref = 'Project' 
+
+--select c.contact_first_name, c.contact_last_name, g.grade_course_code_ref, g.grade_exam_type_ref, g.grade_score,
+--dense_rank() over(order by g.grade_score desc) as rnk
+--from grades g inner join students s
+--on g.grade_student_epita_email_ref = s.student_epita_email
+--inner join contacts c
+--on s.student_contact_ref = c.contact_email
+--where g.grade_course_code_ref = 'SE_ADV_JS'
+
+
+--7-Get students Ranks in all exams for a course
+select g.grade_student_epita_email_ref, g.grade_exam_type_ref,
+g.grade_course_code_ref, g.grade_score,
+DENSE_RANK() OVER (
+		partition by g.grade_exam_type_ref
+		ORDER BY g.grade_score desc
+	) student_rank
+from grades g 
+where g.grade_course_code_ref = 'SE_ADV_JAVA'
+
+--8-Get students Rank in all exams in all courses
+select g.grade_student_epita_email_ref, g.grade_exam_type_ref,
+g.grade_course_code_ref, g.grade_score,
+DENSE_RANK() OVER (
+		partition by g.grade_exam_type_ref, g.grade_course_code_ref
+		ORDER BY g.grade_score desc
+	) student_rank
+from grades g
+
+--9-Get all courses for one program
+select c.course_name, c.course_code from courses c 
+left join programs p on p.program_course_code_ref = c.course_code and p.program_course_rev_ref = c.course_rev
+where p.program_assignment = 'SE'
+
+--10-Get courses in common between 2 programs
+select c.course_name, c.course_code from courses c 
+left join programs p on p.program_course_code_ref = c.course_code and p.program_course_rev_ref = c.course_rev
+where p.program_assignment = 'SE'
+intersect 
+select c.course_name, c.course_code from courses c 
+left join programs p on p.program_course_code_ref = c.course_code and p.program_course_rev_ref = c.course_rev
+where p.program_assignment = 'DSA'
+
+--11-Get all programs following a certain course
+select p.program_assignment from programs p 
+where program_course_code_ref = 'AI_DATA_SCIENCE_IN_PROD'
+
+--12-Get course with the biggest duration
+with course_duration_rank as (
+select duration, course_name,
+rank() over(order by duration desc) as rnk
+from courses
+)
+select course_name, duration, rnk
+from course_duration_rank
+where rnk = 1;
+
+--select course_name, duration from courses
+--order by duration desc
+--limit 2
+
+
+--13-get courses with the same duration
+
+select course_name, duration from courses where duration in (
+	select duration from courses
+	group by duration having count(duration) > 1
+)
+order by duration desc
+
+--select c.duration, count(1) from courses c 
+--group by c.duration
+--HAVING count(c.duration) > 1
+
+--14-Get all sessions for a specific course
+select * from sessions s 
+left join courses c on c.course_code = s.session_course_ref and c.course_rev = s.session_course_rev_ref 
+where c.course_code = 'DT_RDBMS'
+
+
+--15-Get all session for a certain period
+select s.session_date, s.session_start_time, s.session_end_time from sessions s
+where s.session_date between '2020-12-12' and '2021-02-02'
+
+--16-Get one student attendance sheet
+select c.contact_first_name, s.student_epita_email , a.attendance_session_date_ref, a.attendance_course_ref, a.attendance_presence from attendance a 
+left join students s on s.student_epita_email = a.attendance_student_ref
+left join contacts c on c.contact_email = s.student_contact_ref
+where s.student_epita_email = 'jamal.vanausdal@epita.fr'
+
+--17-Get one student summary of attendance
+
+--18-Get student with most absences
+select c.contact_first_name, c.contact_last_name, count(a.attendance_presence) as absents from students s
+left join contacts c on c.contact_email = s.student_contact_ref
+left join attendance a on s.student_epita_email = a.attendance_student_ref
+where a.attendance_presence = 0
+group by c.contact_first_name, c.contact_last_name
+order by absents desc
+limit 1
+
+--------------------------------
+
+--Hard questions (build the relations requiered)
+--1- Get all exams for a specific Course
+select * from exams e 
+where e.exam_course_code = 'SE_ADV_JAVA'
+
+--2- Get all Grades for a specific Student
+select * from grades g 
+where g.grade_student_epita_email_ref = 'jamal.vanausdal@epita.fr'
+
+--3- Get the final grades for a student on a specifique course or all courses
+select s.student_epita_email ,g.grade_course_code_ref, 
+sum(e.exam_weight * g.grade_score)/sum(e.exam_weight) as final_grade
+from grades g
+left join exams e on g.grade_course_code_ref = e.exam_course_code
+left join students s on g.grade_student_epita_email_ref =s.student_epita_email
+where s.student_epita_email ='malinda.hochard@epita.fr'
+group by g.grade_course_code_ref, s.student_epita_email
+
+--4- Get the students with the top 5 scores for specific course
+
+-- we need to calculate the final grade
+with student_top_scores as (
+select c.contact_first_name, c.contact_last_name, g.grade_course_code_ref, 
+sum(e.exam_weight * g.grade_score)/sum(e.exam_weight) as final_grade,
+DENSE_RANK() OVER (
+		partition by g.grade_course_code_ref
+		ORDER BY sum(e.exam_weight * g.grade_score)/sum(e.exam_weight) desc
+	) student_rank
+from grades g
+left join exams e on g.grade_course_code_ref = e.exam_course_code
+left join students s on g.grade_student_epita_email_ref = s.student_epita_email
+left join contacts c on s.student_contact_ref = c.contact_email
+group by g.grade_course_code_ref, c.contact_first_name, c.contact_last_name
+)
+select contact_first_name, contact_last_name, grade_course_code_ref, final_grade, student_rank
+from student_top_scores
+where student_rank <= 5 and grade_course_code_ref = 'DT_RDBMS'
+ 
+
+--5- Get the students with the top 5 scores for specific course per rank
+--6- Get the Class average for a course
+select g.grade_course_code_ref, (sum(e.exam_weight * g.grade_score)/sum(e.exam_weight)::float) as class_average
+from grades g 
+inner join exams e on g.grade_course_code_ref = e.exam_course_code
+inner join students s on g.grade_student_epita_email_ref =s.student_epita_email
+group by g.grade_course_code_ref
